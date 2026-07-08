@@ -215,7 +215,15 @@ public final class SceneMovementManager: ObservableObject {
 
     private func beginWalk(root: Entity, to worldPoint: SIMD3<Float>) {
         let player = currentRoot()?.playerGroundPosition ?? .zero
-        var shift = player - SIMD3<Float>(worldPoint.x, player.y, worldPoint.z)
+        let target = SIMD3<Float>(worldPoint.x, player.y, worldPoint.z)
+
+        // `player`/`target` are in scene (world) space, but PinchWalkSystem
+        // integrates `entity.position`, which lives in the root's parent space.
+        // Convert the shift into that space so a scaled/offset parent doesn't
+        // make the player stop short of (or overshoot) the orb.
+        let playerLocal = root.parent?.convert(position: player, from: nil) ?? player
+        let targetLocal = root.parent?.convert(position: target, from: nil) ?? target
+        var shift = playerLocal - targetLocal
         shift.y = 0
         mutateRoot { $0.remainingShift = shift }
     }
