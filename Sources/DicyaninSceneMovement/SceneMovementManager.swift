@@ -64,14 +64,18 @@ public final class SceneMovementManager: ObservableObject {
         comp.groundY = groundY
         root.components.set(comp)
 
+        // Laser + reticle track the hand/head, so they live in static
+        // (origin) space. The orb marks a point ON the world, and the world
+        // root slides under the player while walking, so the orb must ride
+        // the root or it drifts away from the tapped spot as the root moves.
         let host = visualParent ?? root.parent
         if let host {
             host.addChild(laser)
             host.addChild(reticle)
-            host.addChild(orb)
         } else {
-            content.add(laser); content.add(reticle); content.add(orb)
+            content.add(laser); content.add(reticle)
         }
+        root.addChild(orb)
         refreshVisualVisibility()
 
         guard let scene else { return }
@@ -284,9 +288,12 @@ public final class SceneMovementManager: ObservableObject {
         }
     }
 
-    private func setOrb(visible: Bool, at position: SIMD3<Float>) {
+    private func setOrb(visible: Bool, at worldPosition: SIMD3<Float>) {
         if visible {
-            orb.position = position + SIMD3<Float>(0, 0.06, 0)
+            // The orb is parented to the moving root: pin it in root-local
+            // space so it stays glued to the tapped world spot while the
+            // root slides under the player.
+            orb.setPosition(worldPosition + SIMD3<Float>(0, 0.06, 0), relativeTo: nil)
             orb.components.set(OpacityComponent(opacity: 1))
         } else {
             orb.components.set(OpacityComponent(opacity: 0))
