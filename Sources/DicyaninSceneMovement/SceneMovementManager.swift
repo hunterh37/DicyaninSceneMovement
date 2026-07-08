@@ -43,7 +43,7 @@ public final class SceneMovementManager: ObservableObject {
     private var orbAnchorInRoot: SIMD3<Float>?
     private var laserPinch = PinchEdgeDetector()
     private var gazePinch = PinchEdgeDetector()
-    private var updateSub: (any Cancellable)?
+    private var updateSub: EventSubscription?
     private var running = false
 
     public init() {}
@@ -59,7 +59,6 @@ public final class SceneMovementManager: ObservableObject {
     /// the laser / reticle / orb visuals under `visualParent` (defaults to root's parent).
     public func attach(root: Entity, in content: RealityViewContent, visualParent: Entity? = nil) {
         self.root = root
-        self.scene = root.scene
 
         var comp = root.components[SceneMovementRootComponent.self] ?? SceneMovementRootComponent()
         comp.mode = mode
@@ -82,10 +81,15 @@ public final class SceneMovementManager: ObservableObject {
         }
         refreshVisualVisibility()
 
-        guard let scene else { return }
-        updateSub = scene.subscribe(to: SceneEvents.Update.self) { [weak self] (_: SceneEvents.Update) in
+        // Inside RealityView's make closure the entities are not attached to a
+        // Scene yet (root.scene is nil), so subscribe through the content
+        // proxy. This is the only reliable per-frame hook at attach time.
+        updateSub = content.subscribe(to: SceneEvents.Update.self) { [weak self] (event: SceneEvents.Update) in
             guard let self else { return }
-            MainActor.assumeIsolated { self.onFrame() }
+            MainActor.assumeIsolated {
+                if self.scene == nil { self.scene = event.scene }
+                self.onFrame()
+            }
         }
     }
 
@@ -135,9 +139,11 @@ public final class SceneMovementManager: ObservableObject {
     // MARK: - Per frame
 
     private func onFrame() {
+        // Orb tracking must not depend on ARKit providers: it only needs the
+        // root transform, and tap-to-walk works even if session.run failed.
+        followRootAnchor()
         guard let root, running else { return }
         updatePlayerGround()
-        followRootAnchor()
 
         switch mode {
         case .off:
