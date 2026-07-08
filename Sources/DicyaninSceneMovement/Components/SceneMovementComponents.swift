@@ -24,7 +24,7 @@ public struct SceneMovementRootComponent: Component {
     /// Metres per second for pinch to walk.
     public var walkSpeed: Float = 1.6
     /// Player is considered "arrived" within this XZ distance of the target.
-    public var arriveRadius: Float = 0.2
+    public var arriveRadius: Float = 0.02
     /// World space ground position of the player (device projected to y = groundY).
     /// Updated every frame by the manager from the device anchor.
     public var playerGroundPosition: SIMD3<Float> = .zero

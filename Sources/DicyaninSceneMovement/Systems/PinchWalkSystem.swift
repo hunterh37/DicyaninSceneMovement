@@ -25,6 +25,9 @@ public struct PinchWalkSystem: System {
             remaining.y = 0
             let dist = simd_length(remaining)
             if dist <= root.arriveRadius {
+                // Snap the last sliver so the player lands exactly on the
+                // target instead of stopping arriveRadius short of it.
+                entity.position += remaining
                 root.remainingShift = nil
                 entity.components.set(root)
                 continue

@@ -38,6 +38,9 @@ public final class SceneMovementManager: ObservableObject {
     private let orb = MovementVisuals.makeWalkOrb()
 
     private var latestHands: [HandRayState.Chirality: HandRayState] = [:]
+    /// Orb anchor in the moving root's local space, so the orb tracks the
+    /// tapped world spot while the root slides under the player.
+    private var orbAnchorInRoot: SIMD3<Float>?
     private var laserPinch = PinchEdgeDetector()
     private var gazePinch = PinchEdgeDetector()
     private var updateSub: (any Cancellable)?
@@ -64,18 +67,19 @@ public final class SceneMovementManager: ObservableObject {
         comp.groundY = groundY
         root.components.set(comp)
 
-        // Laser + reticle track the hand/head, so they live in static
-        // (origin) space. The orb marks a point ON the world, and the world
-        // root slides under the player while walking, so the orb must ride
-        // the root or it drifts away from the tapped spot as the root moves.
+        // All visuals live in static (origin) space, deliberately OUTSIDE the
+        // moving root so host apps that sweep/restyle the world root never
+        // touch them. The orb still needs to stay glued to the tapped spot on
+        // the sliding world, so its anchor is stored in root-local space and
+        // the orb is repositioned every frame (see followRootAnchor).
         let host = visualParent ?? root.parent
         if let host {
             host.addChild(laser)
             host.addChild(reticle)
+            host.addChild(orb)
         } else {
-            content.add(laser); content.add(reticle)
+            content.add(laser); content.add(reticle); content.add(orb)
         }
-        root.addChild(orb)
         refreshVisualVisibility()
 
         guard let scene else { return }
@@ -133,6 +137,7 @@ public final class SceneMovementManager: ObservableObject {
     private func onFrame() {
         guard let root, running else { return }
         updatePlayerGround()
+        followRootAnchor()
 
         switch mode {
         case .off:
@@ -289,22 +294,32 @@ public final class SceneMovementManager: ObservableObject {
     }
 
     private func setOrb(visible: Bool, at worldPosition: SIMD3<Float>) {
-        if visible {
-            // The orb is parented to the moving root: pin it in root-local
-            // space so it stays glued to the tapped world spot while the
-            // root slides under the player.
-            orb.setPosition(worldPosition + SIMD3<Float>(0, 0.06, 0), relativeTo: nil)
+        if visible, let root {
+            let lifted = worldPosition + SIMD3<Float>(0, 0.06, 0)
+            orbAnchorInRoot = root.convert(position: lifted, from: nil)
+            orb.setPosition(lifted, relativeTo: nil)
             orb.components.set(OpacityComponent(opacity: 1))
         } else {
+            orbAnchorInRoot = nil
             orb.components.set(OpacityComponent(opacity: 0))
         }
+    }
+
+    /// Re-pins the orb to its root-local anchor every frame so it stays on the
+    /// tapped spot while PinchWalkSystem slides the root under the player.
+    private func followRootAnchor() {
+        guard let root, let anchor = orbAnchorInRoot else { return }
+        orb.setPosition(root.convert(position: anchor, to: nil), relativeTo: nil)
     }
 
     private func hideLaser() {
         laser.components.set(OpacityComponent(opacity: 0))
         reticle.components.set(OpacityComponent(opacity: 0))
     }
-    private func hideOrb() { orb.components.set(OpacityComponent(opacity: 0)) }
+    private func hideOrb() {
+        orbAnchorInRoot = nil
+        orb.components.set(OpacityComponent(opacity: 0))
+    }
     private func hideAll() { hideLaser(); hideOrb() }
     private func refreshVisualVisibility() { if mode == .off { hideAll() } }
 
